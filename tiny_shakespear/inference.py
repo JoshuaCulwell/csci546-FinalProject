@@ -34,12 +34,13 @@ def generate(model, stoi, itos, prompt, steps=200):
     # Generate new characters
     for _ in range(steps):
         logits = model.decoder(h)
-        probs = torch.softmax(logits, dim=-1)
+        probs = torch.softmax(logits, dim=-1)[0]
         idx = torch.multinomial(probs, num_samples=1).item()
 
         out.append(itos[idx])
 
-        tok_embed = model.embed(torch.tensor([[idx]], device=device))
+        tok = torch.tensor([idx], device=device)
+        tok_embed = model.embed(tok)
         h = model.sample_transition(h, tok_embed)
 
     return "".join(out)
