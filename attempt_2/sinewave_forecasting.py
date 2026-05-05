@@ -13,6 +13,7 @@ from training_utils import (
     build_model_from_config,
     sensitivity_analysis,
     randomized_search,
+    train_final_model,
 )
 
 # -----------------------------
@@ -128,98 +129,6 @@ def metric_fn(pred, target):
 # -----------------------------
 # Final training loop (50 epochs)
 # -----------------------------
-
-def train_final_model(
-    config,
-    train_loader,
-    val_loader,
-    device,
-    num_epochs,
-    checkpoints_dir,
-):
-    os.makedirs(checkpoints_dir, exist_ok=True)
-
-    model = build_model_from_config(config).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
-
-    history = {
-        "train_loss": [],
-        "val_loss": [],
-        "val_metric": [],
-    }
-
-    best_val_metric = -math.inf
-    best_epoch = -1
-
-    for epoch in range(num_epochs):
-        # ---- Train ----
-        model.train()
-        total_train_loss = 0.0
-        total_train_count = 0
-
-        for x, y in train_loader:
-            x = x.to(device)
-            y = y.to(device)
-
-            optimizer.zero_grad()
-            logits = model(x)
-            loss = loss_fn(logits, y)
-            loss.backward()
-            optimizer.step()
-
-            batch_size = x.size(0)
-            total_train_loss += loss.item() * batch_size
-            total_train_count += batch_size
-
-        avg_train_loss = total_train_loss / max(total_train_count, 1)
-
-        # ---- Val ----
-        model.eval()
-        total_val_loss = 0.0
-        total_val_metric = 0.0
-        total_val_count = 0
-
-        with torch.no_grad():
-            for x, y in val_loader:
-                x = x.to(device)
-                y = y.to(device)
-                logits = model(x)
-                loss = loss_fn(logits, y)
-                metric = metric_fn(logits, y)
-
-                batch_size = x.size(0)
-                total_val_loss += loss.item() * batch_size
-                total_val_metric += metric * batch_size
-                total_val_count += batch_size
-
-        avg_val_loss = total_val_loss / max(total_val_count, 1)
-        avg_val_metric = total_val_metric / max(total_val_count, 1)
-
-        history["train_loss"].append(avg_train_loss)
-        history["val_loss"].append(avg_val_loss)
-        history["val_metric"].append(avg_val_metric)
-
-        # Save epoch checkpoint
-        epoch_ckpt_path = os.path.join(
-            checkpoints_dir, f"epoch_{epoch + 1:03d}.pt"
-        )
-        torch.save(model.state_dict(), epoch_ckpt_path)
-
-        # Track best model by validation metric
-        if avg_val_metric > best_val_metric:
-            best_val_metric = avg_val_metric
-            best_epoch = epoch + 1
-            best_path = os.path.join(checkpoints_dir, "best_model.pt")
-            torch.save(model.state_dict(), best_path)
-
-        print(
-            f"[Final Train] Epoch {epoch+1}/{num_epochs} "
-            f"TrainLoss={avg_train_loss:.4f} "
-            f"ValLoss={avg_val_loss:.4f} "
-            f"ValMetric={avg_val_metric:.4f}"
-        )
-
-    return history, best_epoch, best_val_metric
 
 
 # -----------------------------
