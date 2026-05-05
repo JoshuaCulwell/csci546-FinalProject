@@ -98,6 +98,42 @@ def build_model(
     )
     return model
 
+def build_model_from_config(config):
+    transition_type = config["transition_type"]
+
+    if transition_type == "mlp":
+        transition_hparams = {
+            "width": config["width"],
+            "depth": config["depth"],
+            "embedding_dim": config["embedding_dim"],
+        }
+    elif transition_type == "diffusion":
+        transition_hparams = {
+            "num_diffusion_steps": config["num_diffusion_steps"],
+            "denoising_hidden_dim": config["denoising_hidden_dim"],
+            "denoising_depth": config["denoising_depth"],
+            "denoising_activation_function": nn.ReLU,
+            "timestep_dim": config["timestep_dim"],
+            "beta_start": config["beta_start"],
+            "beta_end": config["beta_end"],
+            "embedding_dim": config["embedding_dim"],
+        }
+    else:
+        raise ValueError(f"Unknown transition_type: {transition_type}")
+
+    out_hparams = {
+        "width": config["out_width"],
+        "depth": config["out_depth"],
+    }
+
+    return build_model(
+        input_dim=config["input_dim"],
+        output_dim=config["output_dim"],
+        hidden_dim=config["hidden_dim"],
+        transition_type=transition_type,
+        transition_hparams=transition_hparams,
+        out_mlp_hparams=out_hparams,
+    )
 
 # -----------------------------
 # Training / evaluation
