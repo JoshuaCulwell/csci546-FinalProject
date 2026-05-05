@@ -1,0 +1,65 @@
+{
+  "hidden_dim": {
+    "range": [
+      40,
+      81
+    ],
+    "is_int": true
+  },
+  "learning_rate": {
+    "range": [
+      0.001505,
+      0.003
+    ],
+    "is_int": false
+  },
+  "embedding_dim": {
+    "range": [
+      12,
+      18
+    ],
+    "is_int": true
+  },
+  "timestep_dim": {
+    "range": [
+      109,
+      114
+    ],
+    "is_int": true
+  },
+  "num_diffusion_steps": {
+    "range": [
+      3,
+      6
+    ],
+    "is_int": true
+  },
+  "denoising_hidden_dim": {
+    "range": [
+      47,
+      117
+    ],
+    "is_int": true
+  },
+  "denoising_depth": {
+    "range": [
+      5,
+      6
+    ],
+    "is_int": true
+  },
+  "beta_start": {
+    "range": [
+      0.000505,
+      0.001
+    ],
+    "is_int": false
+  },
+  "beta_end": {
+    "range": [
+      0.0505,
+      0.1
+    ],
+    "is_int": false
+  }
+}
