@@ -35,7 +35,6 @@ def train_final_model(
     device,
     num_epochs,
     checkpoints_dir,
-    task_type,
     loss_fn,
     metric_fn,
 ):
@@ -66,13 +65,10 @@ def train_final_model(
             optimizer.zero_grad()
             logits = model(x)
 
-            if task_type == "classification":
-                y = y.unsqueeze(-1)
-                loss = loss_fn(logits[:, -1, :], y[:, -1])
-            else:
-                loss = loss_fn(logits[:, -1, :], y)
+            loss = loss_fn(logits, y[:, -1])
 
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             batch_size = x.size(0)
@@ -93,14 +89,8 @@ def train_final_model(
                 y = y.to(device)
                 logits = model(x)
 
-                if task_type == "classification":
-                    y = y.unsqueeze(-1)
-                    loss = loss_fn(logits[:, -1, :], y[:, -1])
-                    preds = logits[:, -1, :].argmax(dim=-1)
-                    metric = metric_fn(preds, y[:, -1].squeeze(-1))
-                else:
-                    loss = loss_fn(logits[:, -1, :], y)
-                    metric = metric_fn(logits[:, -1, :], y)
+                loss = loss_fn(logits, y)
+                metric = metric_fn(logits, y)
 
                 batch_size = x.size(0)
                 total_val_loss += loss.item() * batch_size
@@ -251,7 +241,6 @@ def train_one_epoch(
     optimizer: torch.optim.Optimizer,
     loss_fn: Callable,
     device: torch.device,
-    task_type: str,
 ) -> float:
 
     model.train()
@@ -265,14 +254,9 @@ def train_one_epoch(
 
         optimizer.zero_grad()
         logits = model(x)
-
-        if task_type == "classification":
-            y = y.unsqueeze(-1)
-            loss = loss_fn(logits[:, -1, :], y[:, -1])
-        else:
-            loss = loss_fn(logits[:, -1, :], y)
-
+        loss = loss_fn(logits, y)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
         batch_size = x.size(0)
@@ -289,7 +273,6 @@ def evaluate(
     loss_fn: Callable,
     metric_fn: Callable,
     device: torch.device,
-    task_type: str,
 ) -> Tuple[float, float]:
 
     model.eval()
@@ -304,14 +287,8 @@ def evaluate(
 
         logits = model(x)
 
-        if task_type == "classification":
-            y = y.unsqueeze(-1)
-            loss = loss_fn(logits[:, -1, :], y[:, -1])
-            preds = logits[:, -1, :].argmax(dim=-1)
-            metric = metric_fn(preds, y[:, -1].squeeze(-1))
-        else:
-            loss = loss_fn(logits[:, -1, :], y)
-            metric = metric_fn(logits[:, -1, :], y)
+        loss = loss_fn(logits, y)
+        metric = metric_fn(logits, y)
 
         batch_size = x.size(0)
         total_loss += loss.item() * batch_size
@@ -332,7 +309,6 @@ def run_training_loop(
     loss_fn: Callable,
     metric_fn: Callable,
     device: torch.device,
-    task_type: str,
     num_epochs: int,
 ) -> Dict[str, Any]:
 
@@ -344,10 +320,10 @@ def run_training_loop(
 
     for epoch in tqdm(range(num_epochs), desc="Epochs"):
         train_loss = train_one_epoch(
-            model, train_loader, optimizer, loss_fn, device, task_type
+            model, train_loader, optimizer, loss_fn, device
         )
         val_loss, val_metric = evaluate(
-            model, val_loader, loss_fn, metric_fn, device, task_type
+            model, val_loader, loss_fn, metric_fn, device
         )
 
         history["train_loss"].append(train_loss)
@@ -387,7 +363,6 @@ def sensitivity_analysis(
     loss_fn: Callable,
     metric_fn: Callable,
     device: torch.device,
-    task_type: str,
     num_epochs: int,
 ) -> Dict[str, Dict[str, Any]]:
 
@@ -417,7 +392,6 @@ def sensitivity_analysis(
                 loss_fn=loss_fn,
                 metric_fn=metric_fn,
                 device=device,
-                task_type=task_type,
                 num_epochs=num_epochs,
             )
 
@@ -466,7 +440,6 @@ def randomized_search(
     loss_fn: Callable,
     metric_fn: Callable,
     device: torch.device,
-    task_type: str,
     num_epochs: int,
     num_trials: int,
     checkpoint_dir: str,
@@ -494,7 +467,6 @@ def randomized_search(
             loss_fn=loss_fn,
             metric_fn=metric_fn,
             device=device,
-            task_type=task_type,
             num_epochs=num_epochs,
         )
 
@@ -573,7 +545,6 @@ if __name__ == "__main__":
     def metric_fn(pred, target):
         return -torch.nn.functional.mse_loss(pred, target).item()
 
-    task_type = "regression"
 
     # ---------------------------------------------------------
     # 3. Base hyperparameter config
@@ -649,7 +620,6 @@ if __name__ == "__main__":
         loss_fn=loss_fn,
         metric_fn=metric_fn,
         device=device,
-        task_type=task_type,
         num_epochs=1,   # small for test
     )
 
@@ -668,7 +638,6 @@ if __name__ == "__main__":
         loss_fn=loss_fn,
         metric_fn=metric_fn,
         device=device,
-        task_type=task_type,
         num_epochs=1,      # small for test
         num_trials=2,      # small for test
         checkpoint_dir="./checkpoints",
@@ -720,7 +689,6 @@ if __name__ == "__main__":
         # pred: [B], target: [B]
         return (pred == target).float().mean().item()
 
-    task_type = "classification"
 
     # ---------------------------------------------------------
     # 3. Base hyperparameter config
@@ -796,7 +764,6 @@ if __name__ == "__main__":
         loss_fn=loss_fn,
         metric_fn=metric_fn,
         device=device,
-        task_type=task_type,
         num_epochs=1,   # small for test
     )
 
@@ -815,7 +782,6 @@ if __name__ == "__main__":
         loss_fn=loss_fn,
         metric_fn=metric_fn,
         device=device,
-        task_type=task_type,
         num_epochs=1,      # small for test
         num_trials=2,      # small for test
         checkpoint_dir="./checkpoints",

@@ -2,6 +2,7 @@ import os
 import json
 import math
 import random
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -113,15 +114,29 @@ def make_adding_dataloaders(
 # Loss + metric for regression → classification
 # -----------------------------
 
-loss_fn = nn.MSELoss()
+def loss_fn(pred, target):
+    pred = pred[:, -1, :]
+
+    if target.dim() == 1:
+        target = target.unsqueeze(-1)
+
+    return nn.functional.mse_loss(pred, target)
 
 def metric_fn(pred, target):
-    # Higher is better: negative MSE
+    pred = pred[:, -1, :]
+
+    if target.dim() == 1:
+        target = target.unsqueeze(-1)
+
     return -nn.functional.mse_loss(pred, target).item()
 
 
 # -----------------------------
 # Evaluation Metrics
+# -----------------------------
+
+# -----------------------------
+# Correct Regression Metrics
 # -----------------------------
 
 def compute_test_metrics(model, test_loader, device):
@@ -140,22 +155,32 @@ def compute_test_metrics(model, test_loader, device):
     preds = torch.cat(preds).squeeze(-1).numpy()
     targets = torch.cat(targets).squeeze(-1).numpy()
 
-    # Convert regression output to binary classification:
-    # threshold at 1.0 (sum of two uniform[0,1] values)
-    pred_bin = (preds > 1.0).astype(int)
-    target_bin = (targets > 1.0).astype(int)
+    # --- Core regression metrics ---
+    mse = float(np.mean((preds - targets) ** 2))
+    mae = float(np.mean(np.abs(preds - targets)))
+    rmse = float(np.sqrt(mse))
+    r2 = float(1 - np.sum((preds - targets)**2) / np.sum((targets - targets.mean())**2))
+
+    # --- Spectral MSE (FFT-based frequency error) ---
+    fft_pred = np.fft.rfft(preds)
+    fft_tgt = np.fft.rfft(targets)
+    spectral_mse = float(np.mean(np.abs(fft_pred - fft_tgt) ** 2))
+
+    # --- Error distribution stats ---
+    median_ae = float(np.median(np.abs(preds - targets)))
+    max_ae = float(np.max(np.abs(preds - targets)))
 
     metrics = {
-        "accuracy": float(accuracy_score(target_bin, pred_bin)),
-        "precision": float(precision_score(target_bin, pred_bin)),
-        "recall": float(recall_score(target_bin, pred_bin)),
-        "f1": float(f1_score(target_bin, pred_bin)),
-        "roc_auc": float(roc_auc_score(target_bin, preds)),
-        "brier": float(brier_score_loss(target_bin, preds)),
+        "mse": mse,
+        "mae": mae,
+        "rmse": rmse,
+        "r2": r2,
+        "spectral_mse": spectral_mse,
+        "median_abs_error": median_ae,
+        "max_abs_error": max_ae,
     }
 
     return metrics, preds, targets
-
 
 # -----------------------------
 # Plotting
@@ -197,36 +222,6 @@ def plot_example_prediction(model, test_loader, device, title, save_path):
     plt.savefig(save_path)
     plt.close()
 
-
-def plot_roc_curve(targets, preds, title, save_path):
-    fpr, tpr, _ = roc_curve(targets, preds)
-    plt.figure()
-    plt.plot(fpr, tpr, label="ROC Curve")
-    plt.xlabel("FPR")
-    plt.ylabel("TPR")
-    plt.title(title)
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.close()
-
-
-def plot_confusion(targets, preds, title, save_path):
-    cm = confusion_matrix(targets, preds)
-    plt.figure()
-    plt.imshow(cm, cmap="Blues")
-    plt.colorbar()
-    plt.title(title)
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
-    for i in range(2):
-        for j in range(2):
-            plt.text(j, i, cm[i, j], ha="center", va="center")
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.close()
-
-
 # -----------------------------
 # Full experiment per transition
 # -----------------------------
@@ -248,16 +243,16 @@ def run_experiment_for_transition(
     base_config = {
         "input_dim": 2,
         "output_dim": 1,
-        "hidden_dim": 32,
+        "hidden_dim": 256,
         "transition_type": transition_type,
-        "learning_rate": 1e-3,
+        "learning_rate": 1e-4,
         "width": 64,
-        "depth": 2,
+        "depth": 3,
         "out_width": 64,
         "out_depth": 2,
-        "num_diffusion_steps": 4,
+        "num_diffusion_steps": 10,
         "denoising_hidden_dim": 64,
-        "denoising_depth": 2,
+        "denoising_depth": 3,
         "timestep_dim": 32,
         "beta_start": 1e-4,
         "beta_end": 0.02,
@@ -266,9 +261,9 @@ def run_experiment_for_transition(
 
     # ---- Hyperparameter ranges ----
     hyperparam_ranges = {
-        "hidden_dim": {"range": (16, 128), "is_int": True, "num_samples": 3, "top_k": 2},
-        "learning_rate": {"range": (1e-5, 3e-3), "is_int": False, "num_samples": 3, "top_k": 2},
-        "embedding_dim": {"range": (1, 16), "is_int": True, "num_samples": 3, "top_k": 2},
+        "hidden_dim": {"range": (16, 512), "is_int": True, "num_samples": 3, "top_k": 2},
+        "learning_rate": {"range": (1e-6, 3e-4), "is_int": False, "num_samples": 3, "top_k": 2},
+        "embedding_dim": {"range": (1, 64), "is_int": True, "num_samples": 3, "top_k": 2},
     }
 
     if transition_type == "mlp":
@@ -279,8 +274,8 @@ def run_experiment_for_transition(
     else:
         hyperparam_ranges.update({
             "timestep_dim": {"range": (16, 128), "is_int": True, "num_samples": 3, "top_k": 2},
-            "num_diffusion_steps": {"range": (2, 6), "is_int": True, "num_samples": 3, "top_k": 2},
-            "denoising_hidden_dim": {"range": (32, 128), "is_int": True, "num_samples": 3, "top_k": 2},
+            "num_diffusion_steps": {"range": (2, 32), "is_int": True, "num_samples": 3, "top_k": 2},
+            "denoising_hidden_dim": {"range": (32, 256), "is_int": True, "num_samples": 3, "top_k": 2},
             "denoising_depth": {"range": (1, 6), "is_int": True, "num_samples": 3, "top_k": 2},
             "beta_start": {"range": (1e-5, 1e-3), "is_int": False, "num_samples": 3, "top_k": 2},
             "beta_end": {"range": (1e-3, 0.1), "is_int": False, "num_samples": 3, "top_k": 2},
@@ -302,7 +297,6 @@ def run_experiment_for_transition(
         loss_fn=loss_fn,
         metric_fn=metric_fn,
         device=device,
-        task_type="regression",
         num_epochs=sa_epochs,
     )
 
@@ -323,7 +317,6 @@ def run_experiment_for_transition(
         loss_fn=loss_fn,
         metric_fn=metric_fn,
         device=device,
-        task_type="regression",
         num_epochs=rs_epochs,
         num_trials=rs_trials,
         checkpoint_dir=rs_checkpoint_dir,
@@ -352,7 +345,6 @@ def run_experiment_for_transition(
         device=device,
         num_epochs=final_epochs,
         checkpoints_dir=final_ckpt_dir,
-        task_type="regression",
         loss_fn=loss_fn,
         metric_fn=metric_fn
     )
@@ -393,19 +385,18 @@ def run_experiment_for_transition(
         save_path=os.path.join(plots_dir, "example_prediction.png"),
     )
 
-    plot_roc_curve(
-        (targets > 1.0).astype(int),
-        preds,
-        title=f"Adding {transition_type.upper()} ROC Curve",
-        save_path=os.path.join(plots_dir, "roc_curve.png"),
-    )
+    # Residual plot
+    plt.figure()
+    residuals = preds - targets
+    plt.scatter(targets, residuals, alpha=0.5)
+    plt.axhline(0, color='red', linestyle='--')
+    plt.xlabel("Target")
+    plt.ylabel("Residual (Pred - Target)")
+    plt.title(f"Adding {transition_type.upper()} Residual Plot")
+    plt.tight_layout()
+    plt.savefig(os.path.join(plots_dir, "residual_plot.png"))
+    plt.close()
 
-    plot_confusion(
-        (targets > 1.0).astype(int),
-        (preds > 1.0).astype(int),
-        title=f"Adding {transition_type.upper()} Confusion Matrix",
-        save_path=os.path.join(plots_dir, "confusion_matrix.png"),
-    )
 
     return {
         "transition_type": transition_type,
@@ -423,21 +414,21 @@ def main():
     set_seed(0)
 
     train_loader, val_loader, test_loader = make_adding_dataloaders(
-        num_samples=5000,
-        seq_len=50,
+        num_samples=10000,
+        seq_len=32,
         batch_size=64,
     )
 
     results_root = "./results/adding"
     os.makedirs(results_root, exist_ok=True)
 
-    mlp_results = run_experiment_for_transition(
-        transition_type="mlp",
-        train_loader=train_loader,
-        val_loader=val_loader,
-        test_loader=test_loader,
-        results_root=os.path.join(results_root, "mlp"),
-    )
+#    mlp_results = run_experiment_for_transition(
+#        transition_type="mlp",
+#        train_loader=train_loader,
+#        val_loader=val_loader,
+#        test_loader=test_loader,
+#        results_root=os.path.join(results_root, "mlp"),
+#    )
 
     diff_results = run_experiment_for_transition(
         transition_type="diffusion",
@@ -461,14 +452,14 @@ def main():
 
     # Accuracy comparison
     labels = ["MLP", "Diffusion"]
-    accs = [summary["mlp"]["accuracy"], summary["diffusion"]["accuracy"]]
+    mses = [summary["mlp"]["mse"], summary["diffusion"]["mse"]]
 
     plt.figure()
-    plt.bar(labels, accs)
-    plt.ylabel("Accuracy")
-    plt.title("Adding Problem: MLP vs Diffusion")
+    plt.bar(labels, mses)
+    plt.ylabel("MSE")
+    plt.title("Adding Problem: MLP vs Diffusion (Regression)")
     plt.tight_layout()
-    plt.savefig(os.path.join(comparison_dir, "accuracy_comparison.png"))
+    plt.savefig(os.path.join(comparison_dir, "mse_comparison.png"))
     plt.close()
 
     print("\n=== Finished Adding Problem Comparison ===")

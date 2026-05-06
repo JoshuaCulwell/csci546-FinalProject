@@ -1,0 +1,21 @@
+{
+  "best_config": {
+    "input_dim": 2,
+    "output_dim": 1,
+    "hidden_dim": 64,
+    "transition_type": "diffusion",
+    "learning_rate": 0.0002835669597448997,
+    "width": 64,
+    "depth": 3,
+    "out_width": 64,
+    "out_depth": 2,
+    "num_diffusion_steps": 7,
+    "denoising_hidden_dim": 221,
+    "denoising_depth": 5,
+    "timestep_dim": 76,
+    "beta_start": 0.0001834050423181908,
+    "beta_end": 0.06530660310100017,
+    "embedding_dim": 30
+  },
+  "best_val_metric": -0.16249439032872517
+}
