@@ -1,0 +1,37 @@
+{
+  "hidden_dim": {
+    "range": [
+      904,
+      992
+    ],
+    "is_int": true
+  },
+  "learning_rate": {
+    "range": [
+      0.00015049999999999997,
+      0.0003
+    ],
+    "is_int": false
+  },
+  "embedding_dim": {
+    "range": [
+      57,
+      446
+    ],
+    "is_int": true
+  },
+  "width": {
+    "range": [
+      280,
+      293
+    ],
+    "is_int": true
+  },
+  "depth": {
+    "range": [
+      3,
+      4
+    ],
+    "is_int": true
+  }
+}

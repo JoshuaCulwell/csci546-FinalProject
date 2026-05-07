@@ -1,0 +1,22 @@
+{
+  "best_config": {
+    "input_dim": 1,
+    "output_dim": 43,
+    "hidden_dim": 989,
+    "transition_type": "mlp",
+    "learning_rate": 0.000243977241476408,
+    "width": 287,
+    "depth": 4,
+    "out_width": 256,
+    "out_depth": 2,
+    "num_diffusion_steps": 5,
+    "denoising_hidden_dim": 256,
+    "denoising_depth": 3,
+    "timestep_dim": 32,
+    "beta_start": 0.0001,
+    "beta_end": 0.02,
+    "embedding_dim": 370,
+    "vocab_size": 43
+  },
+  "best_val_metric_rs": 0.5182230996158174
+}
